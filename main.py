@@ -6,6 +6,7 @@ import random
 import cv2
 from PIL import Image
 from typing import Tuple
+import yaml
 
 
 class ImageFileIndicator:
@@ -55,7 +56,7 @@ image_file_indicator: ImageFileIndicator = ImageFileIndicator()
 
 
 def archive_resize_img_and_name(dir: str, file_name: str) -> Tuple[np.ndarray, str]:
-    
+
     if dir is None or file_name is None:
         return None, '/no_file_found'
 
@@ -88,6 +89,19 @@ def select_file(src_dir: str, dst_dir: str, sub_folder: str):
     return archive_resize_img_and_name(src_dir, image_file_indicator.current_candidated_image())
 
 
+def del_file(src_dir: str):
+    # mv current file into the dst folder
+    selected_image_filename = image_file_indicator.current_candidated_image()
+    os.remove(f'{src_dir}/{selected_image_filename}')
+
+    index = image_file_indicator.current()
+    # update folder
+    image_file_indicator.update_candidated_images(src_dir, keep_index=index)
+
+    # display the next image
+    return archive_resize_img_and_name(src_dir, image_file_indicator.current_candidated_image())
+
+
 def dispaly_previous_img(dir: str):
     image_file_indicator.prev()
     selected_image_filename = image_file_indicator.current_candidated_image()
@@ -104,40 +118,67 @@ def dispaly_next_img(dir: str):
 
 def refresh_candidated_imgs(dir: str):
     global image_file_indicator
-    image_file_indicator.update_candidated_images(dir)
+
+    total_image_number = len(image_file_indicator.candidated_images)
+    if total_image_number > 0:
+        random_index = random.randint(0, total_image_number-1)
+    else:
+        random_index = 0
+
+    image_file_indicator.update_candidated_images(dir, keep_index=random_index)
     selected_image_filename = image_file_indicator.current_candidated_image()
 
     return archive_resize_img_and_name(dir, selected_image_filename)
 
+def read_file_path():
+    if os.path.exists('dir_config.yaml'):
+        with open('dir_config.yaml', 'r') as input_file:
+            yaml_data = yaml.safe_load(input_file)
+            return yaml_data['src_dir'], yaml_data['dst_dir']
+    else:
+        return '/', '/'
+
+def update_config(src_dir: str, dst_dir: str):
+    yaml_data = dict()
+    with open('dir_config.yaml', 'w') as output_file:
+        yaml_data['src_dir'] = src_dir
+        yaml_data['dst_dir'] = dst_dir
+        yaml.dump(yaml_data, output_file, default_flow_style=False)
 
 def main():
+    history_src_dir, history_dst_dir = read_file_path()
     with gr.Blocks() as select_tab:
         gr.Markdown("select positive and negative images.")
         with gr.Tab("choose image"):
             with gr.Row():
-                src_dir = gr.Textbox(label='src dir', value='/home')
-                dst_dir = gr.Textbox(label='dst dir', value='/home')
+                src_dir = gr.Textbox(label='src dir', value=history_src_dir)
+                dst_dir = gr.Textbox(label='dst dir', value=history_dst_dir)
                 refresh_button = gr.Button(value="refresh")
-                prev_button = gr.Button(value="prev")
-                next_button = gr.Button(value="next")
 
                 gr_img, display_file_path = refresh_candidated_imgs(src_dir.value)
 
+            display_img = gr.Image(label='candidated', height=512, width=512, value=gr_img)
+            dispaly_img_path = gr.Textbox(label='path', value='no file found' if display_file_path is not None else display_file_path)
             with gr.Row():
-                with gr.Column():
-                    display_img = gr.Image(label='candidated', height=512, width=512, value=gr_img)
-                    dispaly_img_path = gr.Textbox(label='path', value='no file found' if display_file_path is not None else display_file_path)
+                prev_button = gr.Button(value="prev")
+                next_button = gr.Button(value="next")
+                move_button = gr.Button(value="move to pos")
+                del_button = gr.Button("del")
 
-                with gr.Column():
-                    positive_button = gr.Button(value="pos")
-                    negative_button = gr.Button(value="neg")
+            positive_button = gr.Button(value="pos")
+            negative_button = gr.Button(value="neg")
 
-            positive_button.click(select_file, inputs=[src_dir, dst_dir, gr.State('pos')], outputs=[display_img, dispaly_img_path])
-            negative_button.click(select_file, inputs=[src_dir, dst_dir, gr.State('neg')], outputs=[display_img, dispaly_img_path])
+        src_dir.change(update_config, inputs=[src_dir, dst_dir])
+        dst_dir.change(update_config, inputs=[src_dir, dst_dir])
 
-            refresh_button.click(refresh_candidated_imgs, inputs=src_dir, outputs=[display_img, dispaly_img_path])
-            prev_button.click(dispaly_previous_img, inputs=src_dir, outputs=[display_img, dispaly_img_path])
-            next_button.click(dispaly_next_img, inputs=src_dir, outputs=[display_img, dispaly_img_path])
+        positive_button.click(select_file, inputs=[src_dir, dst_dir, gr.State('pos')], outputs=[display_img, dispaly_img_path])
+        negative_button.click(select_file, inputs=[src_dir, dst_dir, gr.State('neg')], outputs=[display_img, dispaly_img_path])
+
+        refresh_button.click(refresh_candidated_imgs, inputs=src_dir, outputs=[display_img, dispaly_img_path])
+        prev_button.click(dispaly_previous_img, inputs=src_dir, outputs=[display_img, dispaly_img_path])
+        next_button.click(dispaly_next_img, inputs=src_dir, outputs=[display_img, dispaly_img_path])
+        move_button.click(select_file, inputs=[src_dir, dst_dir, gr.State('pos')], outputs=[display_img, dispaly_img_path])
+        del_button.click(del_file, inputs=[src_dir], outputs=[display_img, dispaly_img_path])
 
     select_tab.launch(server_name='10.23.2.12')
 
