@@ -4,7 +4,6 @@ import numpy as np
 import shutil
 import random
 import cv2
-from PIL import Image
 from typing import Tuple
 import yaml
 
